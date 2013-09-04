@@ -14,7 +14,13 @@ enum simplessh_error {
   CONNECT,
   INIT,
   HANDSHAKE,
-  KNOWNHOSTS
+  KNOWNHOSTS_INIT,
+  KNOWNHOSTS_HOSTKEY,
+  KNOWNHOSTS_CHECK,
+  AUTHENTICATION,
+  CHANNEL_OPEN,
+  CHANNEL_EXEC,
+  READ
 };
 
 struct simplessh_result {
@@ -40,6 +46,8 @@ struct simplessh_session *simplessh_open_session_password(
 struct simplessh_result *simplessh_exec_command(
   struct simplessh_session*,
   const char *);
+
+int simplessh_free_result(struct simplessh_result*);
 
 int simplessh_close_session(struct simplessh_session*);
 
