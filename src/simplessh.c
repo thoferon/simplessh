@@ -99,10 +99,6 @@ struct simplessh_session *simplessh_open_session_password(
                                         LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW,
                                         &host);
 
-    fprintf(stderr, "Host check: %d, key: %s\n", check,
-                        (check <= LIBSSH2_KNOWNHOST_CHECK_MISMATCH)?
-                                        host->key:"<none>");
-
     if(check != 0) return mkErrorSession(session, KNOWNHOSTS_CHECK);
     libssh2_knownhost_free(knownhosts);
   } else {
@@ -129,7 +125,7 @@ struct simplessh_result *simplessh_exec_command(
     if(libssh2_session_last_error(session->lsession, NULL, NULL, 0) == LIBSSH2_ERROR_EAGAIN) {
       waitsocket(session->sock, session->lsession);
     } else {
-      return mkErrorSession(session, CHANNEL_OPEN);
+      return mkErrorResult(result, CHANNEL_OPEN);
     }
   }
 
@@ -169,6 +165,8 @@ struct simplessh_result *simplessh_exec_command(
     }
   }
   result->content[content_position] = '\0';
+
+  // TODO: channel close/free, deal with exit status, signals
 
   return result;
 }
