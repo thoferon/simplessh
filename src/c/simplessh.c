@@ -14,6 +14,12 @@
   return tmp; \
 }
 
+#define min(a, b) ({ \
+  int tmpA = (int)(a); \
+  int tmpB = (int)(b); \
+  tmpA < tmpB ? tmpA : tmpB; \
+})
+
 static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
   struct timeval timeout;
   int rc;
@@ -117,20 +123,26 @@ struct simplessh_either *simplessh_exec_command(
     struct simplessh_session *session,
     const char *command) {
   struct simplessh_either *either;
+  struct simplessh_result *result;
   LIBSSH2_CHANNEL *channel;
   int rc;
 
-  #define returnLocalErrorC1(err) { returnError(either, (err)); }
+  // Empty result
+  result = malloc(sizeof(struct simplessh_result));
+  result->exit_code = 127;
 
   // Empty either
   either = malloc(sizeof(struct simplessh_either));
   either->side = RIGHT;
+  either->value = result;
+
+  #define returnLocalErrorC(err) { returnError(either, (err)); }
 
   while((channel = libssh2_channel_open_session(session->lsession)) == NULL) {
     if(libssh2_session_last_error(session->lsession, NULL, NULL, 0) == LIBSSH2_ERROR_EAGAIN)
       waitsocket(session->sock, session->lsession);
     else
-      returnError(either, CHANNEL_OPEN);
+      returnLocalErrorC(CHANNEL_OPEN);
   }
 
   // Send the command
@@ -138,14 +150,13 @@ struct simplessh_either *simplessh_exec_command(
     if(rc == LIBSSH2_ERROR_EAGAIN) {
       waitsocket(session->sock, session->lsession);
     } else {
-      returnLocalErrorC1(CHANNEL_EXEC);
+      returnLocalErrorC(CHANNEL_EXEC);
     }
   }
 
   // Read result
-  int content_size = 1024, content_position = 0;
+  int content_size = 128, content_position = 0;
   char *content = malloc(content_size);
-  #define returnLocalErrorC2(err) { free(content); returnError(either, (err)); }
 
   for(;;) {
     rc = libssh2_channel_read(channel,
@@ -156,27 +167,36 @@ struct simplessh_either *simplessh_exec_command(
       if(rc == LIBSSH2_ERROR_EAGAIN)
         waitsocket(session->sock, session->lsession);
       else
-        returnLocalErrorC2(READ);
+        returnLocalErrorC(READ);
     } else if(rc > 0) {
       content_position += rc;
-      content_size += 1024;
-      content = realloc(content, content_size);
+      if(content_size - content_position > 1024) {
+        content_size = min(content_size * 2, content_size + 1024);
+        content = realloc(content, content_size);
+      }
     } else {
       break;
     }
   }
   content[content_position] = '\0';
+  result->content = content;
 
-  // TODO: channel close/free, deal with exit status, signals
+  while((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
+    waitsocket(session->sock, session->lsession);
 
-  either->value = content;
+  if(rc == 0)
+    result->exit_code = libssh2_channel_get_exit_status(channel);
+    // TODO: signal ?
+
+  libssh2_channel_free(channel);
+
   return either;
 }
 
 void simplessh_close_session(struct simplessh_session *session) {
-  close(session->sock);
   libssh2_session_disconnect(session->lsession, "simplessh_close_session");
   libssh2_session_free(session->lsession);
+  close(session->sock);
   free(session);
   libssh2_exit();
 }

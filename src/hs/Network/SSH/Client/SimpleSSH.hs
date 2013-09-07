@@ -2,6 +2,8 @@
 
 module Network.SSH.Client.SimpleSSH
   ( SimpleSSHError(..)
+  , Session
+  , Result
   , openSessionWithPassword
   , execCommand
   , closeSession
@@ -17,9 +19,13 @@ import Foreign.C.String
 import Foreign.Marshal.Alloc
 import Foreign.Ptr
 
-type CEither a  = Ptr a
+type CEither    = Ptr ()
 newtype Session = Session (Ptr ())
-newtype Result  = Result  (Ptr CChar)
+newtype CResult = CResult (Ptr ())
+data Result = Result
+  { content  :: String
+  , exitCode :: Integer
+  } deriving (Show, Eq)
 
 type SimpleSSH a = ErrorT SimpleSSHError IO a
 
@@ -44,16 +50,28 @@ instance Error SimpleSSHError where
   strMsg _ = Unknown
 
 foreign import ccall "simplessh_is_left"
-  isLeftC :: CEither a
+  isLeftC :: CEither
           -> IO CInt
 
 foreign import ccall "simplessh_get_error"
-  getErrorC :: CEither a
+  getErrorC :: CEither
             -> IO CInt
 
 foreign import ccall "simplessh_get_value"
-  getValueC :: CEither a
+  getValueC :: CEither
             -> IO (Ptr a)
+
+foreign import ccall "simplessh_get_content"
+  getContentC :: CResult
+              -> IO CString
+
+foreign import ccall "simplessh_get_exit_code"
+  getExitCodeC :: CResult
+               -> IO CInt
+
+foreign import ccall "simplessh_free_either_result"
+  freeEitherResultC :: CEither
+                    -> IO ()
 
 foreign import ccall "simplessh_open_session_password"
   openSessionWithPasswordC :: CString
@@ -61,12 +79,12 @@ foreign import ccall "simplessh_open_session_password"
                            -> CString
                            -> CString
                            -> CString
-                           -> IO (CEither ())
+                           -> IO CEither
 
 foreign import ccall "simplessh_exec_command"
   execCommandC :: Session
                -> CString
-               -> IO (CEither CChar)
+               -> IO CEither
 
 foreign import ccall "simplessh_close_session"
   closeSessionC :: Session
@@ -86,14 +104,14 @@ readError err = case err of
   10 -> Read
   _  -> Unknown
 
-getValue :: CEither a
-         -> (Ptr a -> b)
+getValue :: CEither
+         -> (Ptr () -> b)
          -> IO b
 getValue eitherC build = do
   ptr <- getValueC eitherC
   return $ build ptr
 
-getError :: CEither a -> IO SimpleSSHError
+getError :: CEither -> IO SimpleSSHError
 getError eitherC = readError <$> getErrorC eitherC
 
 openSessionWithPassword :: String  -- ^ Hostname.
@@ -115,9 +133,11 @@ openSessionWithPassword hostname port username password knownhostsPath = do
     checkLeft <- isLeftC eitherC
     mapM_ free [hostnameC, usernameC, passwordC, knownhostsPathC]
 
-    if checkLeft == 0
+    res <- if checkLeft == 0
       then Right <$> getValue eitherC Session
       else Left  <$> getError eitherC
+    free eitherC
+    return res
 
   case eRes of
     Left err  -> throwError err
@@ -125,7 +145,7 @@ openSessionWithPassword hostname port username password knownhostsPath = do
 
 execCommand :: Session -- ^ The session to use, see 'openSessionWithPassword'.
             -> String  -- ^ Command.
-            -> SimpleSSH String
+            -> SimpleSSH Result
 execCommand session command = do
   eRes <- liftIO $ do
     commandC <- newCString command
@@ -133,19 +153,31 @@ execCommand session command = do
     free commandC
 
     checkLeft <- isLeftC eitherC
-    if checkLeft == 0
-      then Right <$> getValue eitherC Result
+    res <- if checkLeft == 0
+      then Right <$> (getValue eitherC CResult >>= readResult)
       else Left  <$> getError eitherC
 
-  case eRes of
-    Left err  -> throwError err
-    Right res -> liftIO $ readResult res
+    freeEitherResultC eitherC
+    return res
 
-readResult :: Result -> IO String
-readResult (Result ptr) = do
-  res <- peekCString ptr
-  free ptr
-  return res
+  finalRes <- case eRes of
+    Left err  -> throwError err
+    Right res -> return res
+
+  return finalRes
+
+getContent :: CResult -> IO String
+getContent ptr = do
+  contentPtr <- getContentC ptr
+  peekCString contentPtr
+
+getExitCode :: CResult -> IO Integer
+getExitCode ptr = toInteger <$> getExitCodeC ptr
+
+readResult :: CResult -> IO Result
+readResult resultC =  Result
+                  <$> getContent  resultC
+                  <*> getExitCode resultC
 
 closeSession :: Session -> SimpleSSH ()
 closeSession = lift . closeSessionC

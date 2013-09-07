@@ -26,3 +26,20 @@ void *simplessh_get_value(struct simplessh_either *either) {
   return either->value;
 }
 
+void simplessh_free_either_result(struct simplessh_either *either) {
+  struct simplessh_result *result = either->value;
+  if(result != NULL) {
+    if(result->content != NULL) free(result->content);
+    free(result);
+  }
+  free(either);
+}
+
+char *simplessh_get_content(struct simplessh_result *result) {
+  return result->content;
+}
+
+int simplessh_get_exit_code(struct simplessh_result *result) {
+  return result->exit_code;
+}
+

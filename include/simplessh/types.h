@@ -32,9 +32,19 @@ struct simplessh_session {
   int sock;
 };
 
+struct simplessh_result {
+  char *content;
+  int exit_code;
+};
+
 int simplessh_is_left(struct simplessh_either*);
 int simplessh_get_error(struct simplessh_either*);
 void *simplessh_get_value(struct simplessh_either*);
+
+void simplessh_free_either_result(struct simplessh_either*);
+
+char *simplessh_get_content(struct simplessh_result*);
+int simplessh_get_exit_code(struct simplessh_result*);
 
 #endif
 
