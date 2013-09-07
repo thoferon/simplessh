@@ -52,7 +52,7 @@ struct simplessh_either *simplessh_open_session_password(
   int hostkey_type, rc;
   size_t hostkey_len;
 
-  #define returnLocalError(err) { \
+  #define returnLocalErrorSP(err) { \
     simplessh_close_session(session); \
     returnError(either, (err)); \
   }
@@ -78,16 +78,16 @@ struct simplessh_either *simplessh_open_session_password(
   // End of connection initialisation
 
   session->lsession = libssh2_session_init();
-  if(!session) returnLocalError(INIT);
+  if(!session) returnLocalErrorSP(INIT);
 
   libssh2_session_set_blocking(session->lsession, 0);
 
-  while(rc = (libssh2_session_handshake(session->lsession, session->sock)) == LIBSSH2_ERROR_EAGAIN);
-  if(rc) returnLocalError(HANDSHAKE);
+  while((rc = libssh2_session_handshake(session->lsession, session->sock)) == LIBSSH2_ERROR_EAGAIN);
+  if(rc) returnLocalErrorSP(HANDSHAKE);
 
   // Check host in the knownhosts
   knownhosts = libssh2_knownhost_init(session->lsession);
-  if(!knownhosts) returnLocalError(KNOWNHOSTS_INIT);
+  if(!knownhosts) returnLocalErrorSP(KNOWNHOSTS_INIT);
 
   libssh2_knownhost_readfile(knownhosts, knownhosts_path, LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 
@@ -98,17 +98,17 @@ struct simplessh_either *simplessh_open_session_password(
                                         LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW,
                                         &host);
 
-    if(check != 0) returnLocalError(KNOWNHOSTS_CHECK);
+    if(check != 0) returnLocalErrorSP(KNOWNHOSTS_CHECK);
     libssh2_knownhost_free(knownhosts);
   } else {
     libssh2_knownhost_free(knownhosts);
-    returnLocalError(KNOWNHOSTS_HOSTKEY);
+    returnLocalErrorSP(KNOWNHOSTS_HOSTKEY);
   }
   // End of the knownhosts checking
 
   // Authentication
   while((rc = libssh2_userauth_password(session->lsession, username, password)) == LIBSSH2_ERROR_EAGAIN);
-  if(rc) returnLocalError(AUTHENTICATION);
+  if(rc) returnLocalErrorSP(AUTHENTICATION);
 
   return either;
 }
@@ -120,7 +120,11 @@ struct simplessh_either *simplessh_exec_command(
   LIBSSH2_CHANNEL *channel;
   int rc;
 
-  #define returnLocalError(err) { returnError(either, (err)); }
+  #define returnLocalErrorC1(err) { returnError(either, (err)); }
+
+  // Empty either
+  either = malloc(sizeof(struct simplessh_either));
+  either->side = RIGHT;
 
   while((channel = libssh2_channel_open_session(session->lsession)) == NULL) {
     if(libssh2_session_last_error(session->lsession, NULL, NULL, 0) == LIBSSH2_ERROR_EAGAIN)
@@ -129,23 +133,19 @@ struct simplessh_either *simplessh_exec_command(
       returnError(either, CHANNEL_OPEN);
   }
 
-  // Empty either
-  either = malloc(sizeof(struct simplessh_either));
-  either->side = RIGHT;
-
   // Send the command
   while((rc = libssh2_channel_exec(channel, command)) != 0) {
     if(rc == LIBSSH2_ERROR_EAGAIN) {
       waitsocket(session->sock, session->lsession);
     } else {
-      returnLocalError(CHANNEL_EXEC);
+      returnLocalErrorC1(CHANNEL_EXEC);
     }
   }
 
   // Read result
   int content_size = 1024, content_position = 0;
   char *content = malloc(content_size);
-  #define returnLocalError(err) { free(content); returnError(either, (err)); }
+  #define returnLocalErrorC2(err) { free(content); returnError(either, (err)); }
 
   for(;;) {
     rc = libssh2_channel_read(channel,
@@ -156,7 +156,7 @@ struct simplessh_either *simplessh_exec_command(
       if(rc == LIBSSH2_ERROR_EAGAIN)
         waitsocket(session->sock, session->lsession);
       else
-        returnLocalError(READ);
+        returnLocalErrorC2(READ);
     } else if(rc > 0) {
       content_position += rc;
       content_size += 1024;
@@ -173,7 +173,7 @@ struct simplessh_either *simplessh_exec_command(
   return either;
 }
 
-int simplessh_close_session(struct simplessh_session *session) {
+void simplessh_close_session(struct simplessh_session *session) {
   close(session->sock);
   libssh2_session_disconnect(session->lsession, "simplessh_close_session");
   libssh2_session_free(session->lsession);

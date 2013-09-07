@@ -16,12 +16,11 @@ cabal-version:       >=1.8
 
 library
   exposed-modules:   Network.SSH.Client.SimpleSSH
-  -- other-modules:
   hs-source-dirs:    src/hs
-  c-sources:         src/c/simplessh/types.c src/c/simplessh.c
+  c-sources:         src/c/simplessh/types.c
+                   , src/c/simplessh.c
   include-dirs:      include
   extra-libraries:   ssh2
   build-depends:     base > 4 && < 6
                    , mtl >= 2.1
-  extra-libraries:   ssh2
-  build-depends:     base > 5 && < 6
+  cc-options:        -Wall -g

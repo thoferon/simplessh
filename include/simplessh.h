@@ -14,7 +14,7 @@ struct simplessh_either *simplessh_exec_command(
   struct simplessh_session*,
   const char *);
 
-int simplessh_close_session(struct simplessh_session*);
+void simplessh_close_session(struct simplessh_session*);
 
 #endif
 
