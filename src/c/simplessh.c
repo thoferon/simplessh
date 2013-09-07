@@ -14,11 +14,9 @@
   return tmp; \
 }
 
-#define min(a, b) ({ \
-  int tmpA = (int)(a); \
-  int tmpB = (int)(b); \
-  tmpA < tmpB ? tmpA : tmpB; \
-})
+inline int min(int a, int b) {
+  return a < b ? a : b;
+}
 
 static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
   struct timeval timeout;
