@@ -2,26 +2,16 @@
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 #include <libssh2.h>
 #include <simplessh.h>
 
-/* A helper function to mutate a simplessh_session to make it an error */
-struct simplessh_session *mkErrorSession(
-    struct simplessh_session *session,
-    enum simplessh_error error) {
-  session->type = LEFT;
-  session->error = error;
-  return session;
-}
-
-/* A helper function to mutate a simplessh_result to make it an error */
-struct simplessh_result *mkErrorResult(
-    struct simplessh_result *result,
-    enum simplessh_error error) {
-  result->type = LEFT;
-  result->error = error;
-  return result;
+#define returnError(either, err) { \
+  struct simplessh_either *tmp = (either); \
+  tmp->side  = LEFT; \
+  tmp->error = (err); \
+  return tmp; \
 }
 
 static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
@@ -48,24 +38,33 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
   return rc;
 }
 
-struct simplessh_session *simplessh_open_session_password(
+struct simplessh_either *simplessh_open_session_password(
     const char *hostname,
     uint16_t port,
     const char *username,
     const char *password,
     const char *knownhosts_path) {
   struct sockaddr_in sin;
+  struct simplessh_either *either;
   struct simplessh_session *session;
   LIBSSH2_KNOWNHOSTS *knownhosts;
   char *hostkey;
   int hostkey_type, rc;
   size_t hostkey_len;
 
+  #define returnLocalError(err) { \
+    simplessh_close_session(session); \
+    returnError(either, (err)); \
+  }
+
   // Empty simplessh_session
-  session = (struct simplessh_session*)malloc(sizeof(struct simplessh_session));
-  session->type = RIGHT;
-  session->error = NOERROR;
+  session = malloc(sizeof(struct simplessh_session));
   session->lsession = NULL;
+
+  // Empty simplessh_either
+  either = malloc(sizeof(struct simplessh_either));
+  either->side  = RIGHT;
+  either->value = session;
 
   // Connection initialisation
   session->sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -74,21 +73,21 @@ struct simplessh_session *simplessh_open_session_password(
   sin.sin_port = htons(port);
   sin.sin_addr.s_addr = inet_addr(hostname);
 
-  if(connect(session->sock, (const struct sockaddr*)&sin, sizeof(struct sockaddr_in)) != 0)
-    return mkErrorSession(session, CONNECT);
+  rc = connect(session->sock, (const struct sockaddr*)&sin, sizeof(struct sockaddr_in));
+  if(rc != 0) returnError(either, CONNECT);
   // End of connection initialisation
 
   session->lsession = libssh2_session_init();
-  if(!session) return mkErrorSession((struct simplessh_session*)&session, INIT);
+  if(!session) returnLocalError(INIT);
 
   libssh2_session_set_blocking(session->lsession, 0);
 
   while(rc = (libssh2_session_handshake(session->lsession, session->sock)) == LIBSSH2_ERROR_EAGAIN);
-  if(rc) return mkErrorSession(session, HANDSHAKE);
+  if(rc) returnLocalError(HANDSHAKE);
 
   // Check host in the knownhosts
   knownhosts = libssh2_knownhost_init(session->lsession);
-  if(!knownhosts) return mkErrorSession(session, KNOWNHOSTS_INIT);
+  if(!knownhosts) returnLocalError(KNOWNHOSTS_INIT);
 
   libssh2_knownhost_readfile(knownhosts, knownhosts_path, LIBSSH2_KNOWNHOST_FILE_OPENSSH);
 
@@ -99,81 +98,79 @@ struct simplessh_session *simplessh_open_session_password(
                                         LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW,
                                         &host);
 
-    if(check != 0) return mkErrorSession(session, KNOWNHOSTS_CHECK);
+    if(check != 0) returnLocalError(KNOWNHOSTS_CHECK);
     libssh2_knownhost_free(knownhosts);
   } else {
     libssh2_knownhost_free(knownhosts);
-    return mkErrorSession(session, KNOWNHOSTS_HOSTKEY);
+    returnLocalError(KNOWNHOSTS_HOSTKEY);
   }
   // End of the knownhosts checking
 
   // Authentication
   while((rc = libssh2_userauth_password(session->lsession, username, password)) == LIBSSH2_ERROR_EAGAIN);
-  if(rc) return mkErrorSession(session, AUTHENTICATION);
+  if(rc) returnLocalError(AUTHENTICATION);
 
-  return session;
+  return either;
 }
 
-struct simplessh_result *simplessh_exec_command(
+struct simplessh_either *simplessh_exec_command(
     struct simplessh_session *session,
     const char *command) {
-  struct simplessh_result *result;
+  struct simplessh_either *either;
   LIBSSH2_CHANNEL *channel;
   int rc;
 
+  #define returnLocalError(err) { returnError(either, (err)); }
+
   while((channel = libssh2_channel_open_session(session->lsession)) == NULL) {
-    if(libssh2_session_last_error(session->lsession, NULL, NULL, 0) == LIBSSH2_ERROR_EAGAIN) {
+    if(libssh2_session_last_error(session->lsession, NULL, NULL, 0) == LIBSSH2_ERROR_EAGAIN)
       waitsocket(session->sock, session->lsession);
-    } else {
-      return mkErrorResult(result, CHANNEL_OPEN);
-    }
+    else
+      returnError(either, CHANNEL_OPEN);
   }
 
-  // Empty result
-  result = (struct simplessh_result*)malloc(sizeof(struct simplessh_result));
-  result->type = RIGHT;
-  result->error = NOERROR;
+  // Empty either
+  either = malloc(sizeof(struct simplessh_either));
+  either->side = RIGHT;
 
   // Send the command
   while((rc = libssh2_channel_exec(channel, command)) != 0) {
     if(rc == LIBSSH2_ERROR_EAGAIN) {
       waitsocket(session->sock, session->lsession);
     } else {
-      return mkErrorResult(result, CHANNEL_EXEC);
+      returnLocalError(CHANNEL_EXEC);
     }
   }
 
   // Read result
   int content_size = 1024, content_position = 0;
-  result->content = (char*)malloc(content_size);
+  char *content = malloc(content_size);
+  #define returnLocalError(err) { free(content); returnError(either, (err)); }
+
   for(;;) {
     rc = libssh2_channel_read(channel,
-        result->content + content_position,
+        content + content_position,
         content_size - content_position - 1); // Don't forget the \0
 
     if(rc < 0) {
       if(rc == LIBSSH2_ERROR_EAGAIN)
         waitsocket(session->sock, session->lsession);
       else
-        return mkErrorResult(result, READ);
+        returnLocalError(READ);
     } else if(rc > 0) {
       content_position += rc;
       content_size += 1024;
-      result->content = (char*)realloc(result->content, content_size);
+      content = realloc(content, content_size);
     } else {
       break;
     }
   }
-  result->content[content_position] = '\0';
+  content[content_position] = '\0';
 
   // TODO: channel close/free, deal with exit status, signals
 
-  return result;
-}
-
-int simplessh_free_result(struct simplessh_result *result) {
-  if(result->content != NULL) free(result->content);
-  free(result);
+  either->value = content;
+  return either;
 }
 
 int simplessh_close_session(struct simplessh_session *session) {

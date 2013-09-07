@@ -1,0 +1,4 @@
+^dist
+gmon\.out
+a.out
+\.o$
