@@ -4,10 +4,13 @@ module Network.SSH.Client.SimpleSSH
   ( SimpleSSHError(..)
   , Session
   , Result
-  , openSessionWithPassword
+  , openSession
+  , authenticateWithPassword
+  , authenticateWithKey
   , execCommand
   , closeSession
   , withSessionPassword
+  , withSessionKey
   ) where
 
 import Control.Applicative
@@ -73,13 +76,25 @@ foreign import ccall "simplessh_free_either_result"
   freeEitherResultC :: CEither
                     -> IO ()
 
-foreign import ccall "simplessh_open_session_password"
-  openSessionWithPasswordC :: CString
+foreign import ccall "simplessh_open_session"
+  openSessionC :: CString
                            -> CUShort
                            -> CString
-                           -> CString
-                           -> CString
                            -> IO CEither
+
+foreign import ccall "simplessh_authenticate_password"
+  authenticatePasswordC :: Session
+                        -> CString
+                        -> CString
+                        -> IO CEither
+
+foreign import ccall "simplessh_authenticate_key"
+  authenticateKeyC :: Session
+                   -> CString
+                   -> CString
+                   -> CString
+                   -> CString
+                   -> IO CEither
 
 foreign import ccall "simplessh_exec_command"
   execCommandC :: Session
@@ -114,24 +129,75 @@ getValue eitherC build = do
 getError :: CEither -> IO SimpleSSHError
 getError eitherC = readError <$> getErrorC eitherC
 
-openSessionWithPassword :: String  -- ^ Hostname.
-                        -> Integer -- ^ Port.
-                        -> String  -- ^ Username.
-                        -> String  -- ^ Password.
-                        -> String  -- ^ Path to known_hosts.
-                        -> SimpleSSH Session
-openSessionWithPassword hostname port username password knownhostsPath = do
+openSession :: String  -- ^ Hostname.
+            -> Integer -- ^ Port.
+            -> String  -- ^ Path to known_hosts.
+            -> SimpleSSH Session
+openSession hostname port knownhostsPath = do
   eRes <- liftIO $ do
-    (hostnameC, usernameC, passwordC, knownhostsPathC) <-
-      (,,,) <$> newCString hostname
-            <*> newCString username
-            <*> newCString password
-            <*> newCString knownhostsPath
+    hostnameC       <- newCString hostname
+    knownhostsPathC <- newCString knownhostsPath
     let portC = fromInteger port
 
-    eitherC   <- openSessionWithPasswordC hostnameC portC usernameC passwordC knownhostsPathC
+    eitherC   <- openSessionC hostnameC portC knownhostsPathC
     checkLeft <- isLeftC eitherC
-    mapM_ free [hostnameC, usernameC, passwordC, knownhostsPathC]
+
+    free hostnameC
+    free knownhostsPathC
+
+    res <- if checkLeft == 0
+      then Right <$> getValue eitherC Session
+      else Left  <$> getError eitherC
+    free eitherC
+    return res
+
+  case eRes of
+    Left err  -> throwError err
+    Right res -> return res
+
+authenticateWithPassword :: Session
+                         -> String
+                         -> String
+                         -> SimpleSSH Session
+authenticateWithPassword session username password = do
+  eRes <- liftIO $ do
+    usernameC <- newCString username
+    passwordC <- newCString password
+
+    eitherC   <- authenticatePasswordC session usernameC passwordC
+    checkLeft <- isLeftC eitherC
+
+    free usernameC
+    free passwordC
+
+    res <- if checkLeft == 0
+      then Right <$> getValue eitherC Session
+      else Left  <$> getError eitherC
+    free eitherC
+    return res
+
+  case eRes of
+    Left err  -> throwError err
+    Right res -> return res
+
+authenticateWithKey :: Session
+                    -> String
+                    -> FilePath
+                    -> FilePath
+                    -> String
+                    -> SimpleSSH Session
+authenticateWithKey session username publicKeyPath privateKeyPath passphrase = do
+  eRes <- liftIO $ do
+    (usernameC, publicKeyPathC, privateKeyPathC, passphraseC) <-
+      (,,,) <$> newCString username
+            <*> newCString publicKeyPath
+            <*> newCString privateKeyPath
+            <*> newCString passphrase
+
+    eitherC   <- authenticateKeyC session usernameC publicKeyPathC privateKeyPathC passphraseC
+    checkLeft <- isLeftC eitherC
+
+    mapM_ free [usernameC, publicKeyPathC, privateKeyPathC, passphraseC]
 
     res <- if checkLeft == 0
       then Right <$> getValue eitherC Session
@@ -182,15 +248,32 @@ readResult resultC =  Result
 closeSession :: Session -> SimpleSSH ()
 closeSession = lift . closeSessionC
 
-withSessionPassword :: String
-                    -> Integer
-                    -> String
-                    -> String
-                    -> String
-                    -> (Session -> SimpleSSH a)
+withSessionPassword :: String                   -- ^ Hostname
+                    -> Integer                  -- ^ Port
+                    -> String                   -- ^ Path to known_hosts
+                    -> String                   -- ^ Username
+                    -> String                   -- ^ Password
+                    -> (Session -> SimpleSSH a) -- ^ Monadic action on the session
                     -> SimpleSSH a
-withSessionPassword hostname port username password knownhostsPath action = do
-  session <- openSessionWithPassword hostname port username password knownhostsPath
-  res     <- action session
-  closeSession session
+withSessionPassword hostname port knownhostsPath username password action = do
+  session              <- openSession hostname port knownhostsPath
+  authenticatedSession <- authenticateWithPassword session username password
+  res                  <- action authenticatedSession
+  closeSession authenticatedSession
+  return res
+
+withSessionKey :: String                   -- ^ Hostname
+               -> Integer                  -- ^ port
+               -> String                   -- ^ Path to known_hosts
+               -> String                   -- ^ Username
+               -> String                   -- ^ Path to public key
+               -> String                   -- ^ Path to private key
+               -> String                   -- ^ Passphrase
+               -> (Session -> SimpleSSH a) -- ^ Monadic action on the session
+               -> SimpleSSH a
+withSessionKey hostname port knownhostsPath username publicKeyPath privateKeyPath passphrase action = do
+  session              <- openSession hostname port knownhostsPath
+  authenticatedSession <- authenticateWithKey session username publicKeyPath privateKeyPath passphrase
+  res                  <- action authenticatedSession
+  closeSession authenticatedSession
   return res

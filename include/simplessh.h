@@ -3,9 +3,19 @@
 
 #include <simplessh/types.h>
 
-struct simplessh_either *simplessh_open_session_password(
+struct simplessh_either *simplessh_open_session(
   const char*,
   uint16_t,
+  const char*);
+
+struct simplessh_either *simplessh_authenticate_password(
+  struct simplessh_session*,
+  const char *username,
+  const char *password);
+
+struct simplessh_either *simplessh_authenticate_key(
+  struct simplessh_session*,
+  const char*,
   const char*,
   const char*,
   const char*);

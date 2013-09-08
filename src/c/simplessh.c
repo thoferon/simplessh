@@ -42,11 +42,9 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
   return rc;
 }
 
-struct simplessh_either *simplessh_open_session_password(
+struct simplessh_either *simplessh_open_session(
     const char *hostname,
     uint16_t port,
-    const char *username,
-    const char *password,
     const char *knownhosts_path) {
   struct sockaddr_in sin;
   struct simplessh_either *either;
@@ -110,9 +108,45 @@ struct simplessh_either *simplessh_open_session_password(
   }
   // End of the knownhosts checking
 
-  // Authentication
+  return either;
+}
+
+struct simplessh_either *simplessh_authenticate_password(
+    struct simplessh_session *session,
+    const char *username,
+    const char *password) {
+  int rc;
+  struct simplessh_either *either = malloc(sizeof(struct simplessh_either));
+
   while((rc = libssh2_userauth_password(session->lsession, username, password)) == LIBSSH2_ERROR_EAGAIN);
-  if(rc) returnLocalErrorSP(AUTHENTICATION);
+  if(rc) {
+    either->side  = LEFT;
+    either->error = AUTHENTICATION;
+  } else {
+    either->side  = RIGHT;
+    either->value = session;
+  }
+
+  return either;
+}
+
+struct simplessh_either *simplessh_authenticate_key(
+    struct simplessh_session *session,
+    const char *username,
+    const char *public_key_path,
+    const char *private_key_path,
+    const char *passphrase) {
+  int rc;
+  struct simplessh_either *either = malloc(sizeof(struct simplessh_either));
+
+  while((rc = libssh2_userauth_publickey_fromfile(session->lsession, username, public_key_path, private_key_path, passphrase)) == LIBSSH2_ERROR_EAGAIN);
+  if(rc) {
+    either->side  = LEFT;
+    either->error = AUTHENTICATION;
+  } else {
+    either->side  = RIGHT;
+    either->value = session;
+  }
 
   return either;
 }
