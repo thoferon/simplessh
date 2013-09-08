@@ -14,11 +14,11 @@ module Network.SSH.Client.SimpleSSH
   ) where
 
 import Control.Applicative
-import Control.Monad.Trans
 import Control.Monad.Error
+import Control.Monad.Trans
 
-import Foreign.C.Types
 import Foreign.C.String
+import Foreign.C.Types
 import Foreign.Marshal.Alloc
 import Foreign.Ptr
 

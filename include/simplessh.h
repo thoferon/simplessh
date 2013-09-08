@@ -1,6 +1,8 @@
 #ifndef __simplessh_header
 #define __simplessh_header
 
+#include <stdint.h>
+
 #include <simplessh/types.h>
 
 struct simplessh_either *simplessh_open_session(
