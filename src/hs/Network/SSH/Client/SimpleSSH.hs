@@ -2,8 +2,10 @@
 
 module Network.SSH.Client.SimpleSSH
   ( SimpleSSHError(..)
+  , SimpleSSH
   , Session
-  , Result
+  , Result(..)
+  , runSimpleSSH
   , openSession
   , authenticateWithPassword
   , authenticateWithKey
@@ -17,6 +19,8 @@ import Control.Applicative
 import Control.Monad.Error
 import Control.Monad.Trans
 
+import qualified Data.ByteString.Char8 as BS
+
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Marshal.Alloc
@@ -26,7 +30,7 @@ type CEither    = Ptr ()
 newtype Session = Session (Ptr ())
 newtype CResult = CResult (Ptr ())
 data Result = Result
-  { content  :: String
+  { content  :: BS.ByteString
   , exitCode :: Integer
   } deriving (Show, Eq)
 
@@ -78,9 +82,9 @@ foreign import ccall "simplessh_free_either_result"
 
 foreign import ccall "simplessh_open_session"
   openSessionC :: CString
-                           -> CUShort
-                           -> CString
-                           -> IO CEither
+               -> CUShort
+               -> CString
+               -> IO CEither
 
 foreign import ccall "simplessh_authenticate_password"
   authenticatePasswordC :: Session
@@ -232,10 +236,10 @@ execCommand session command = do
 
   return finalRes
 
-getContent :: CResult -> IO String
+getContent :: CResult -> IO BS.ByteString
 getContent ptr = do
   contentPtr <- getContentC ptr
-  peekCString contentPtr
+  BS.packCString contentPtr
 
 getExitCode :: CResult -> IO Integer
 getExitCode ptr = toInteger <$> getExitCodeC ptr
