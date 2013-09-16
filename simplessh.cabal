@@ -26,3 +26,4 @@ library
                    , mtl >= 2
                    , bytestring >= 0.9
   cc-options:        -Wall -g
+  ghc-options:       -Wall

@@ -10,6 +10,7 @@ module Network.SSH.Client.SimpleSSH
   , authenticateWithPassword
   , authenticateWithKey
   , execCommand
+  , sendFile
   , closeSession
   , withSessionPassword
   , withSessionKey
@@ -17,7 +18,6 @@ module Network.SSH.Client.SimpleSSH
 
 import Control.Applicative
 import Control.Monad.Error
-import Control.Monad.Trans
 
 import qualified Data.ByteString.Char8 as BS
 
@@ -29,6 +29,7 @@ import Foreign.Ptr
 type CEither    = Ptr ()
 newtype Session = Session (Ptr ())
 newtype CResult = CResult (Ptr ())
+newtype CCount  = CCount  (Ptr ())
 data Result = Result
   { content  :: BS.ByteString
   , exitCode :: Integer
@@ -50,6 +51,8 @@ data SimpleSSHError
   | ChannelOpen
   | ChannelExec
   | Read
+  | FileOpen
+  | Write
   | Unknown
   deriving (Show, Eq)
 
@@ -76,9 +79,17 @@ foreign import ccall "simplessh_get_exit_code"
   getExitCodeC :: CResult
                -> IO CInt
 
+foreign import ccall "simplessh_get_count"
+  getCountC :: CCount
+            -> IO CInt
+
 foreign import ccall "simplessh_free_either_result"
   freeEitherResultC :: CEither
                     -> IO ()
+
+foreign import ccall "simplessh_free_either_count"
+  freeEitherCountC :: CEither
+                   -> IO ()
 
 foreign import ccall "simplessh_open_session"
   openSessionC :: CString
@@ -105,6 +116,13 @@ foreign import ccall "simplessh_exec_command"
                -> CString
                -> IO CEither
 
+foreign import ccall "simplessh_send_file"
+  sendFileC :: Session
+            -> CInt
+            -> CString
+            -> CString
+            -> IO CEither
+
 foreign import ccall "simplessh_close_session"
   closeSessionC :: Session
                 -> IO ()
@@ -121,6 +139,8 @@ readError err = case err of
   8  -> ChannelOpen
   9  -> ChannelExec
   10 -> Read
+  11 -> FileOpen
+  12 -> Write
   _  -> Unknown
 
 getValue :: CEither
@@ -230,11 +250,36 @@ execCommand session command = do
     freeEitherResultC eitherC
     return res
 
-  finalRes <- case eRes of
+  case eRes of
     Left err  -> throwError err
     Right res -> return res
 
-  return finalRes
+sendFile :: Session
+         -> Integer
+         -> String
+         -> String
+         -> SimpleSSH Integer
+sendFile session mode source target = do
+  eRes <- liftIO $ do
+    sourceC <- newCString source
+    targetC <- newCString target
+    let modeC = fromInteger mode
+
+    eitherC   <- sendFileC session modeC sourceC targetC
+    checkLeft <- isLeftC eitherC
+    res <- if checkLeft == 0
+      then Right <$> (getValue eitherC CCount >>= readCount)
+      else Left  <$> getError eitherC
+
+    freeEitherCountC eitherC
+    free sourceC
+    free targetC
+
+    return res
+
+  case eRes of
+    Left err  -> throwError err
+    Right res -> return res
 
 getContent :: CResult -> IO BS.ByteString
 getContent ptr = do
@@ -248,6 +293,9 @@ readResult :: CResult -> IO Result
 readResult resultC =  Result
                   <$> getContent  resultC
                   <*> getExitCode resultC
+
+readCount :: CCount -> IO Integer
+readCount countC = toInteger <$> getCountC countC
 
 closeSession :: Session -> SimpleSSH ()
 closeSession = lift . closeSessionC

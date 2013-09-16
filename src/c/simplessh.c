@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <libssh2.h>
@@ -171,7 +172,7 @@ struct simplessh_either *simplessh_exec_command(
   #define returnLocalErrorC(err) { returnError(either, (err)); }
 
   while((channel = libssh2_channel_open_session(session->lsession)) == NULL) {
-    if(libssh2_session_last_error(session->lsession, NULL, NULL, 0) == LIBSSH2_ERROR_EAGAIN)
+    if(libssh2_session_last_errno(session->lsession) == LIBSSH2_ERROR_EAGAIN)
       waitsocket(session->sock, session->lsession);
     else
       returnLocalErrorC(CHANNEL_OPEN);
@@ -222,6 +223,70 @@ struct simplessh_either *simplessh_exec_command(
 
   libssh2_channel_free(channel);
 
+  return either;
+}
+
+struct simplessh_either *simplessh_send_file(
+    struct simplessh_session *session,
+    int mode,
+    const char *local_path,
+    const char *destination_path) {
+  struct simplessh_either *either;
+  LIBSSH2_CHANNEL *channel = NULL;
+  int rc;
+  int *transferred = malloc(sizeof(int));
+  *transferred = 0;
+
+  // Empty either
+  either = malloc(sizeof(struct simplessh_either));
+  either->side = RIGHT;
+  either->value = transferred;
+
+  #define returnLocalErrorS(err) { \
+    if(f) fclose(f); \
+    if(channel) libssh2_channel_free(channel); \
+    either->side  = LEFT; \
+    either->error = err; \
+    return either; \
+  }
+
+  FILE *f = fopen(local_path, "r");
+  if(f == NULL) returnLocalErrorS(FILEOPEN);
+
+  size_t size;
+  struct stat *fileinfo = malloc(sizeof(struct stat));
+  stat(local_path, fileinfo);
+  size = fileinfo->st_size;
+  free(fileinfo);
+
+  while((channel = libssh2_scp_send(session->lsession, destination_path, fileinfo->st_mode & mode, size)) == NULL) {
+    if(libssh2_session_last_errno(session->lsession) == LIBSSH2_ERROR_EAGAIN) {
+      waitsocket(session->sock, session->lsession);
+    } else {
+      returnLocalErrorS(CHANNEL_OPEN);
+    }
+  }
+
+  char buf[1024];
+  char *current;
+  while(!feof(f)) {
+    size_t n = fread(buf, 1, sizeof(buf), f);
+    current = buf;
+    // Ready to write n bytes to the channel
+    while(n > 0) {
+      rc = libssh2_channel_write(channel, current, n);
+      if(rc < 0) returnLocalErrorS(WRITE);
+      n -= rc;
+      current += rc;
+      *transferred += rc;
+    }
+  }
+
+  libssh2_channel_send_eof(channel);
+  libssh2_channel_wait_eof(channel);
+  libssh2_channel_wait_closed(channel);
+  libssh2_channel_free(channel);
+  fclose(f);
   return either;
 }
 

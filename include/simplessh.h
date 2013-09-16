@@ -1,5 +1,5 @@
 #ifndef __simplessh_header
-#define __simplessh_header
+#define __simplessh_header 1
 
 #include <stdint.h>
 
@@ -25,6 +25,12 @@ struct simplessh_either *simplessh_authenticate_key(
 struct simplessh_either *simplessh_exec_command(
   struct simplessh_session*,
   const char *);
+
+struct simplessh_either *simplessh_send_file(
+  struct simplessh_session*,
+  int,
+  const char*,
+  const char*);
 
 void simplessh_close_session(struct simplessh_session*);
 

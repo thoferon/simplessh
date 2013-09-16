@@ -35,11 +35,20 @@ void simplessh_free_either_result(struct simplessh_either *either) {
   free(either);
 }
 
+void simplessh_free_either_count(struct simplessh_either *either) {
+  if(either->value != NULL) free(either->value);
+  free(either);
+}
+
 char *simplessh_get_content(struct simplessh_result *result) {
   return result->content;
 }
 
 int simplessh_get_exit_code(struct simplessh_result *result) {
   return result->exit_code;
+}
+
+int simplessh_get_count(int *ptr) {
+  return *ptr;
 }
 

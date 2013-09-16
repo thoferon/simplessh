@@ -1,5 +1,5 @@
 #ifndef __SIMPLESSH_TYPES_HEADER
-#define __SIMPLESSH_TYPES_HEADER
+#define __SIMPLESSH_TYPES_HEADER 1
 
 #include <libssh2.h>
 
@@ -18,7 +18,9 @@ enum simplessh_error {
   AUTHENTICATION     = 7,
   CHANNEL_OPEN       = 8,
   CHANNEL_EXEC       = 9,
-  READ               = 10
+  READ               = 10,
+  FILEOPEN           = 11,
+  WRITE              = 12
 };
 
 struct simplessh_either {
@@ -42,9 +44,12 @@ int simplessh_get_error(struct simplessh_either*);
 void *simplessh_get_value(struct simplessh_either*);
 
 void simplessh_free_either_result(struct simplessh_either*);
+void simplessh_free_either_count(struct simplessh_either*);
 
 char *simplessh_get_content(struct simplessh_result*);
 int simplessh_get_exit_code(struct simplessh_result*);
+
+int simplessh_get_count(int*);
 
 #endif
 
