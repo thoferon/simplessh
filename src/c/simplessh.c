@@ -259,7 +259,7 @@ struct simplessh_either *simplessh_send_file(
   size = fileinfo->st_size;
   free(fileinfo);
 
-  while((channel = libssh2_scp_send(session->lsession, destination_path, fileinfo->st_mode & mode, size)) == NULL) {
+  while((channel = libssh2_scp_send(session->lsession, destination_path, mode & 0777, size)) == NULL) {
     if(libssh2_session_last_errno(session->lsession) == LIBSSH2_ERROR_EAGAIN) {
       waitsocket(session->sock, session->lsession);
     } else {
