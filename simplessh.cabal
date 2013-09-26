@@ -18,6 +18,7 @@ library
   hs-source-dirs:    src/hs
   c-sources:         src/c/simplessh/types.c
                    , src/c/simplessh.c
+
   includes:          include/simplessh/types.h
                    , include/simplessh.h
   include-dirs:      include
