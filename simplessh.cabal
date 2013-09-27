@@ -15,10 +15,11 @@ extra-source-files: include/simplessh.h
 
 library
   exposed-modules:   Network.SSH.Client.SimpleSSH
+  other-modules:     Network.SSH.Client.SimpleSSH.Types
+                   , Network.SSH.Client.SimpleSSH.Foreign
   hs-source-dirs:    src/hs
   c-sources:         src/c/simplessh/types.c
                    , src/c/simplessh.c
-
   includes:          include/simplessh/types.h
                    , include/simplessh.h
   include-dirs:      include
