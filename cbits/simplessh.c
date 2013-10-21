@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <netdb.h>
 
 #include <libssh2.h>
 #include <simplessh.h>
@@ -43,11 +44,45 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
   return rc;
 }
 
+inline int get_socket(const char *hostname, uint16_t port) {
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(struct addrinfo));
+  hints.ai_family   = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags    = AI_NUMERICSERV;
+  hints.ai_protocol = 0;
+
+  struct addrinfo *res = NULL;
+  char service[6]; // enough to contain a port number
+  sprintf(service, "%i", port);
+  int rc = getaddrinfo(hostname, service, &hints, &res);
+  if(rc != 0) {
+    if(res) freeaddrinfo(res);
+    return -1;
+  }
+
+  struct addrinfo *current;
+  int sock;
+  for(current = res; current != NULL; current = current->ai_next) {
+    sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if(sock == -1) continue;
+
+    if(connect(sock, res->ai_addr, res->ai_addrlen) != -1) {
+      freeaddrinfo(res);
+      return sock;
+    }
+
+    close(sock);
+  }
+
+  freeaddrinfo(res);
+  return -1;
+}
+
 struct simplessh_either *simplessh_open_session(
     const char *hostname,
     uint16_t port,
     const char *knownhosts_path) {
-  struct sockaddr_in sin;
   struct simplessh_either *either;
   struct simplessh_session *session;
   LIBSSH2_KNOWNHOSTS *knownhosts;
@@ -70,15 +105,8 @@ struct simplessh_either *simplessh_open_session(
   either->value = session;
 
   // Connection initialisation
-  session->sock = socket(AF_INET, SOCK_STREAM, 0);
-
-  sin.sin_family = AF_INET;
-  sin.sin_port = htons(port);
-  sin.sin_addr.s_addr = inet_addr(hostname);
-
-  rc = connect(session->sock, (const struct sockaddr*)&sin, sizeof(struct sockaddr_in));
-  if(rc != 0) returnError(either, CONNECT);
-  // End of connection initialisation
+  session->sock = get_socket(hostname, port);
+  if(session->sock == -1) returnError(either, CONNECT);
 
   session->lsession = libssh2_session_init();
   if(!session) returnLocalErrorSP(INIT);
@@ -297,4 +325,3 @@ void simplessh_close_session(struct simplessh_session *session) {
   free(session);
   libssh2_exit();
 }
-
