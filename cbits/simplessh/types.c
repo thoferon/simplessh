@@ -12,23 +12,23 @@ int simplessh_get_error(struct simplessh_either *either) {
     fprintf(stderr, "Error: simplessh_get_error: trying to get the error of a Right element\n");
     abort();
   }
-  return either->error;
+  return either->u.error;
 }
 
 void *simplessh_get_value(struct simplessh_either *either) {
   if(either->side != RIGHT) {
     fprintf(stderr, "Error: simplessh_get_value: trying to get the value of a Left element\n");
     abort();
-  } else if(either->value == NULL) {
+  } else if(either->u.value == NULL) {
     fprintf(stderr, "Error: simplessh_get_value: element is Right but value has not been set\n");
     abort();
   }
-  return either->value;
+  return either->u.value;
 }
 
 void simplessh_free_either_result(struct simplessh_either *either) {
-  struct simplessh_result *result = either->value;
-  if(result != NULL) {
+  struct simplessh_result *result = either->u.value;
+  if(either->side == RIGHT && result != NULL) {
     if(result->content != NULL) free(result->content);
     free(result);
   }
@@ -36,7 +36,7 @@ void simplessh_free_either_result(struct simplessh_either *either) {
 }
 
 void simplessh_free_either_count(struct simplessh_either *either) {
-  if(either->value != NULL) free(either->value);
+  if(either->side == RIGHT && either->u.value != NULL) free(either->u.value);
   free(either);
 }
 
@@ -51,4 +51,3 @@ int simplessh_get_exit_code(struct simplessh_result *result) {
 int simplessh_get_count(int *ptr) {
   return *ptr;
 }
-

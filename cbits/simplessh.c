@@ -11,8 +11,8 @@
 
 #define returnError(either, err) { \
   struct simplessh_either *tmp = (either); \
-  tmp->side  = LEFT; \
-  tmp->error = (err); \
+  tmp->side    = LEFT; \
+  tmp->u.error = (err); \
   return tmp; \
 }
 
@@ -101,8 +101,8 @@ struct simplessh_either *simplessh_open_session(
 
   // Empty simplessh_either
   either = malloc(sizeof(struct simplessh_either));
-  either->side  = RIGHT;
-  either->value = session;
+  either->side    = RIGHT;
+  either->u.value = session;
 
   // Connection initialisation
   session->sock = get_socket(hostname, port);
@@ -149,11 +149,11 @@ struct simplessh_either *simplessh_authenticate_password(
 
   while((rc = libssh2_userauth_password(session->lsession, username, password)) == LIBSSH2_ERROR_EAGAIN);
   if(rc) {
-    either->side  = LEFT;
-    either->error = AUTHENTICATION;
+    either->side    = LEFT;
+    either->u.error = AUTHENTICATION;
   } else {
-    either->side  = RIGHT;
-    either->value = session;
+    either->side    = RIGHT;
+    either->u.value = session;
   }
 
   return either;
@@ -170,11 +170,11 @@ struct simplessh_either *simplessh_authenticate_key(
 
   while((rc = libssh2_userauth_publickey_fromfile(session->lsession, username, public_key_path, private_key_path, passphrase)) == LIBSSH2_ERROR_EAGAIN);
   if(rc) {
-    either->side  = LEFT;
-    either->error = AUTHENTICATION;
+    either->side    = LEFT;
+    either->u.error = AUTHENTICATION;
   } else {
-    either->side  = RIGHT;
-    either->value = session;
+    either->side    = RIGHT;
+    either->u.value = session;
   }
 
   return either;
@@ -194,8 +194,8 @@ struct simplessh_either *simplessh_exec_command(
 
   // Empty either
   either = malloc(sizeof(struct simplessh_either));
-  either->side = RIGHT;
-  either->value = result;
+  either->side    = RIGHT;
+  either->u.value = result;
 
   #define returnLocalErrorC(err) { returnError(either, (err)); }
 
@@ -267,14 +267,14 @@ struct simplessh_either *simplessh_send_file(
 
   // Empty either
   either = malloc(sizeof(struct simplessh_either));
-  either->side = RIGHT;
-  either->value = transferred;
+  either->side    = RIGHT;
+  either->u.value = transferred;
 
   #define returnLocalErrorS(err) { \
     if(f) fclose(f); \
     if(channel) libssh2_channel_free(channel); \
-    either->side  = LEFT; \
-    either->error = err; \
+    either->side    = LEFT; \
+    either->u.error = err; \
     return either; \
   }
 

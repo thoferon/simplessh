@@ -25,8 +25,10 @@ enum simplessh_error {
 
 struct simplessh_either {
   enum simplessh_left_right side;
-  enum simplessh_error error;
-  void *value;
+  union {
+    enum simplessh_error error;
+    void *value;
+  } u;
 };
 
 struct simplessh_session {
@@ -52,4 +54,3 @@ int simplessh_get_exit_code(struct simplessh_result*);
 int simplessh_get_count(int*);
 
 #endif
-
