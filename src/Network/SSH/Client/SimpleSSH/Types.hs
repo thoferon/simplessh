@@ -1,5 +1,6 @@
 module Network.SSH.Client.SimpleSSH.Types
   ( Result(..)
+  , ResultExit(..)
   , SimpleSSH
   , SimpleSSHError(..)
   , runSimpleSSH
@@ -12,11 +13,18 @@ import qualified Data.ByteString.Char8 as BS
 
 import           Foreign.C.Types
 
+-- | Exit code or signal of a process.
+data ResultExit
+  = ExitSuccess
+  | ExitFailure Integer
+  | ExitSignal BS.ByteString
+  deriving (Show, Eq)
+
+-- | The result of a command execution.
 data Result = Result
-  { resultOut        :: BS.ByteString
-  , resultErr        :: BS.ByteString
-  , resultExitCode   :: Integer
-  , resultExitSignal :: BS.ByteString
+  { resultOut  :: BS.ByteString -- ^ The process' stdout
+  , resultErr  :: BS.ByteString -- ^ The process' stderr
+  , resultExit :: ResultExit    -- ^ The process' exit code or signal
   } deriving (Show, Eq)
 
 type SimpleSSH a = ErrorT SimpleSSHError IO a

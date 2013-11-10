@@ -1,8 +1,11 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Network.SSH.Client.SimpleSSH
   ( SimpleSSHError(..)
   , SimpleSSH
   , Session
   , Result(..)
+  , ResultExit(..)
   , runSimpleSSH
   , openSession
   , authenticateWithPassword
@@ -48,8 +51,16 @@ readResult :: CResult -> IO Result
 readResult resultC =  Result
                   <$> getOut resultC
                   <*> getErr resultC
-                  <*> getExitCode resultC
-                  <*> getExitSignal resultC
+                  <*> readResultExit resultC
+
+readResultExit :: CResult -> IO ResultExit
+readResultExit resultC = do
+  exitCode   <- getExitCode   resultC
+  exitSignal <- getExitSignal resultC
+  return $ case (exitCode, exitSignal) of
+    (0, _)  -> ExitSuccess
+    (_, "") -> ExitFailure exitCode
+    _       -> ExitSignal exitSignal
 
 readCount :: CCount -> IO Integer
 readCount countC = toInteger <$> getCountC countC
