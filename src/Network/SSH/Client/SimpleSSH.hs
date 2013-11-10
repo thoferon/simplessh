@@ -32,14 +32,24 @@ getValue eitherC build = build <$> getValueC eitherC
 getError :: CEither -> IO SimpleSSHError
 getError eitherC = readError <$> getErrorC eitherC
 
-getContent :: CResult -> IO BS.ByteString
-getContent ptr = BS.packCString =<< getContentC ptr
+getOut :: CResult -> IO BS.ByteString
+getOut ptr = BS.packCString =<< getOutC ptr
+
+getErr :: CResult -> IO BS.ByteString
+getErr ptr = BS.packCString =<< getErrC ptr
 
 getExitCode :: CResult -> IO Integer
 getExitCode ptr = toInteger <$> getExitCodeC ptr
 
+getExitSignal :: CResult -> IO BS.ByteString
+getExitSignal ptr = BS.packCString =<< getExitSignalC ptr
+
 readResult :: CResult -> IO Result
-readResult resultC =  Result <$> getContent resultC <*> getExitCode resultC
+readResult resultC =  Result
+                  <$> getOut resultC
+                  <*> getErr resultC
+                  <*> getExitCode resultC
+                  <*> getExitSignal resultC
 
 readCount :: CCount -> IO Integer
 readCount countC = toInteger <$> getCountC countC

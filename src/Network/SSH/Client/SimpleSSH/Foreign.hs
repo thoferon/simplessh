@@ -23,13 +23,21 @@ foreign import ccall "simplessh_get_value"
   getValueC :: CEither
             -> IO (Ptr a)
 
-foreign import ccall "simplessh_get_content"
-  getContentC :: CResult
-              -> IO CString
+foreign import ccall "simplessh_get_out"
+  getOutC :: CResult
+          -> IO CString
+
+foreign import ccall "simplessh_get_err"
+  getErrC :: CResult
+          -> IO CString
 
 foreign import ccall "simplessh_get_exit_code"
   getExitCodeC :: CResult
                -> IO CInt
+
+foreign import ccall "simplessh_get_exit_signal"
+  getExitSignalC :: CResult
+                 -> IO CString
 
 foreign import ccall "simplessh_get_count"
   getCountC :: CCount

@@ -37,8 +37,10 @@ struct simplessh_session {
 };
 
 struct simplessh_result {
-  char *content;
+  char *out;
+  char *err;
   int exit_code;
+  char *exit_signal;
 };
 
 int simplessh_is_left(struct simplessh_either*);
@@ -48,8 +50,10 @@ void *simplessh_get_value(struct simplessh_either*);
 void simplessh_free_either_result(struct simplessh_either*);
 void simplessh_free_either_count(struct simplessh_either*);
 
-char *simplessh_get_content(struct simplessh_result*);
+char *simplessh_get_out(struct simplessh_result*);
+char *simplessh_get_err(struct simplessh_result*);
 int simplessh_get_exit_code(struct simplessh_result*);
+char *simplessh_get_exit_signal(struct simplessh_result*);
 
 int simplessh_get_count(int*);
 

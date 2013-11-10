@@ -13,8 +13,10 @@ import qualified Data.ByteString.Char8 as BS
 import           Foreign.C.Types
 
 data Result = Result
-  { content  :: BS.ByteString
-  , exitCode :: Integer
+  { resultOut        :: BS.ByteString
+  , resultErr        :: BS.ByteString
+  , resultExitCode   :: Integer
+  , resultExitSignal :: BS.ByteString
   } deriving (Show, Eq)
 
 type SimpleSSH a = ErrorT SimpleSSHError IO a
@@ -42,7 +44,7 @@ instance Error SimpleSSHError where
   strMsg _ = Unknown
 
 readError :: CInt -> SimpleSSHError
-readError err = case err of
+readError errNum = case errNum of
   1  -> Connect
   2  -> Init
   3  -> Handshake

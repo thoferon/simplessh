@@ -186,18 +186,27 @@ struct simplessh_either *simplessh_exec_command(
   struct simplessh_either *either;
   struct simplessh_result *result;
   LIBSSH2_CHANNEL *channel;
-  int rc;
+  int rc, rc2;
+  char *out = NULL;
+  char *err = NULL;
 
   // Empty result
   result = malloc(sizeof(struct simplessh_result));
-  result->exit_code = 127;
+  result->out = NULL;
+  result->err = NULL;
+  result->exit_code   = 127;
+  result->exit_signal = NULL;
 
   // Empty either
   either = malloc(sizeof(struct simplessh_either));
   either->side    = RIGHT;
   either->u.value = result;
 
-  #define returnLocalErrorC(err) { returnError(either, (err)); }
+  #define returnLocalErrorC(error) { \
+    if(out != NULL) free(out); \
+    if(err != NULL) free(err); \
+    returnError(either, (error)); \
+  }
 
   while((channel = libssh2_channel_open_session(session->lsession)) == NULL) {
     if(libssh2_session_last_errno(session->lsession) == LIBSSH2_ERROR_EAGAIN)
@@ -216,38 +225,61 @@ struct simplessh_either *simplessh_exec_command(
   }
 
   // Read result
-  int content_size = 128, content_position = 0;
-  char *content = malloc(content_size);
+  int out_size = 128, out_position = 0, err_size = 128, err_position = 0;
+  out = malloc(out_size);
+  err = malloc(err_size);
 
   for(;;) {
-    rc = libssh2_channel_read(channel,
-        content + content_position,
-        content_size - content_position - 1); // Don't forget the \0
+    rc  = libssh2_channel_read(channel,
+                               out + out_position,
+                               out_size - out_position - 1);
+    rc2 = libssh2_channel_read_stderr(channel,
+                                      err + err_position,
+                                      err_size - err_position - 1);
 
-    if(rc < 0) {
-      if(rc == LIBSSH2_ERROR_EAGAIN)
+    if(rc < 0 || rc2 < 0) {
+      if(rc == LIBSSH2_ERROR_EAGAIN || rc2 == LIBSSH2_ERROR_EAGAIN)
         waitsocket(session->sock, session->lsession);
       else
         returnLocalErrorC(READ);
-    } else if(rc > 0) {
-      content_position += rc;
-      if(content_size - content_position > 1024) {
-        content_size = min(content_size * 2, content_size + 1024);
-        content = realloc(content, content_size);
-      }
-    } else {
+    } else if(rc == 0 && rc == 0) {
       break;
+    } else {
+      if(rc > 0) {
+        out_position += rc;
+        if(out_size - out_position < 1024) {
+          out_size = min(out_size * 2, out_size + 65536);
+          out = realloc(out, out_size);
+        }
+      }
+      if(rc2 > 0) {
+        err_position += rc2;
+        if(err_size - err_position < 1024) {
+          err_size = min(err_size * 2, err_size + 65536);
+          err = realloc(err, err_size);
+        }
+      }
     }
   }
-  content[content_position] = '\0';
-  result->content = content;
+  out[out_position] = '\0';
+  realloc(out, out_position + 1);
+  result->out = out;
+
+  err[err_position] = '\0';
+  realloc(err, err_position + 1);
+  result->err = err;
 
   while((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
     waitsocket(session->sock, session->lsession);
 
-  if(rc == 0)
+  if(rc == 0) {
     result->exit_code = libssh2_channel_get_exit_status(channel);
-    // TODO: signal ?
+    libssh2_channel_get_exit_signal(channel,
+                                    &result->exit_signal, NULL,
+                                    NULL, NULL,
+                                    NULL, NULL);
+  }
+
 
   libssh2_channel_free(channel);
 
