@@ -262,11 +262,11 @@ struct simplessh_either *simplessh_exec_command(
     }
   }
   out[out_position] = '\0';
-  realloc(out, out_position + 1);
+  out = realloc(out, out_position + 1);
   result->out = out;
 
   err[err_position] = '\0';
-  realloc(err, err_position + 1);
+  err = realloc(err, err_position + 1);
   result->err = err;
 
   while((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
