@@ -29,8 +29,8 @@ import           Foreign.Ptr
 import           Network.SSH.Client.SimpleSSH.Foreign
 import           Network.SSH.Client.SimpleSSH.Types
 
-getValue :: CEither -> (Ptr () -> b) -> IO b
-getValue eitherC build = build <$> getValueC eitherC
+getValue :: CEither -> (Ptr () -> IO b) -> IO b
+getValue eitherC builder = builder =<< getValueC eitherC
 
 getError :: CEither -> IO SimpleSSHError
 getError eitherC = readError <$> getErrorC eitherC
@@ -45,7 +45,11 @@ getExitCode :: CResult -> IO Integer
 getExitCode ptr = toInteger <$> getExitCodeC ptr
 
 getExitSignal :: CResult -> IO BS.ByteString
-getExitSignal ptr = BS.packCString =<< getExitSignalC ptr
+getExitSignal ptr = do
+  signalPtr <- getExitSignalC ptr
+  if signalPtr == nullPtr
+    then return ""
+    else BS.packCString signalPtr
 
 readResult :: CResult -> IO Result
 readResult resultC =  Result
@@ -77,20 +81,20 @@ liftIOEither ioAction = do
 --
 -- Functions in the C part return pointers to a structure mimicking 'Either'.
 liftEitherCFree :: (CEither -> IO ()) -- ^ A custom function to free the CEither
-                -> (Ptr () -> a)      -- ^ A function to transform the pointer contained in the C structure
+                -> (Ptr () -> IO a)   -- ^ A function to transform the pointer contained in the C structure
                 -> IO CEither         -- ^ An action returning the structure, typically a call to C
                 -> IO (Either SimpleSSHError a)
-liftEitherCFree customFree constr action = do
+liftEitherCFree customFree builder action = do
   eitherC   <- action
   checkLeft <- isLeftC eitherC
   res <- if checkLeft == 0
-    then Right <$> getValue eitherC constr
+    then Right <$> getValue eitherC builder
     else Left  <$> getError eitherC
   customFree eitherC
   return res
 
 -- | Version of 'liftEitherCFree' using the normal 'free'.
-liftEitherC :: (Ptr () -> a) -> IO CEither -> IO (Either SimpleSSHError a)
+liftEitherC :: (Ptr () -> IO a) -> IO CEither -> IO (Either SimpleSSHError a)
 liftEitherC = liftEitherCFree free
 
 -- | Open a SSH session. The next step is to authenticate.
@@ -103,7 +107,7 @@ openSession hostname port knownhostsPath = liftIOEither $ do
   knownhostsPathC <- newCString knownhostsPath
   let portC = fromInteger port
 
-  res <- liftEitherC Session $ openSessionC hostnameC portC knownhostsPathC
+  res <- liftEitherC (return . Session) $ openSessionC hostnameC portC knownhostsPathC
 
   free hostnameC
   free knownhostsPathC
@@ -119,7 +123,7 @@ authenticateWithPassword session username password = liftIOEither $ do
   usernameC <- newCString username
   passwordC <- newCString password
 
-  res <- liftEitherC Session $ authenticatePasswordC session usernameC passwordC
+  res <- liftEitherC (return . Session) $ authenticatePasswordC session usernameC passwordC
 
   free usernameC
   free passwordC
@@ -142,7 +146,7 @@ authenticateWithKey session username publicKeyPath privateKeyPath passphrase = l
           <*> newCString privateKeyPath
           <*> newCString passphrase
 
-  res <- liftEitherC Session $ authenticateKeyC session usernameC publicKeyPathC privateKeyPathC passphraseC
+  res <- liftEitherC (return . Session) $ authenticateKeyC session usernameC publicKeyPathC privateKeyPathC passphraseC
 
   mapM_ free [usernameC, publicKeyPathC, privateKeyPathC, passphraseC]
 
@@ -155,12 +159,11 @@ execCommand :: Session -- ^ Session to use
             -> String  -- ^ Command
             -> SimpleSSH Result
 execCommand session command = do
-  result <- liftIOEither $ do
+  liftIOEither $ do
     commandC <- newCString command
-    res      <- liftEitherCFree freeEitherResultC CResult $ execCommandC session commandC
+    res      <- liftEitherCFree freeEitherResultC readResult $ execCommandC session commandC
     free commandC
     return res
-  liftIO $ readResult result
 
 -- | Send a file to the server and returns the number of bytes transferred.
 --
@@ -171,19 +174,17 @@ sendFile :: Session -- ^ Session to use
          -> String  -- ^ Target path
          -> SimpleSSH Integer
 sendFile session mode source target = do
-  count <- liftIOEither $ do
+  liftIOEither $ do
     sourceC <- newCString source
     targetC <- newCString target
     let modeC = fromInteger mode
 
-    res <- liftEitherCFree freeEitherCountC CCount $ sendFileC session modeC sourceC targetC
+    res <- liftEitherCFree freeEitherCountC readCount $ sendFileC session modeC sourceC targetC
 
     free sourceC
     free targetC
 
     return res
-
-  liftIO $ readCount count
 
 -- | Close a session.
 closeSession :: Session -> SimpleSSH ()

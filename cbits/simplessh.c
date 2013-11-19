@@ -205,6 +205,7 @@ struct simplessh_either *simplessh_exec_command(
   #define returnLocalErrorC(error) { \
     if(out != NULL) free(out); \
     if(err != NULL) free(err); \
+    free(result); \
     returnError(either, (error)); \
   }
 
@@ -237,13 +238,13 @@ struct simplessh_either *simplessh_exec_command(
                                       err + err_position,
                                       err_size - err_position - 1);
 
-    if(rc < 0 || rc2 < 0) {
-      if(rc == LIBSSH2_ERROR_EAGAIN || rc2 == LIBSSH2_ERROR_EAGAIN)
-        waitsocket(session->sock, session->lsession);
-      else
-        returnLocalErrorC(READ);
-    } else if(rc == 0 && rc == 0) {
+    if(rc == 0 && rc2 == 0) {
       break;
+    } else if(rc == LIBSSH2_ERROR_EAGAIN && rc2 == LIBSSH2_ERROR_EAGAIN) {
+      waitsocket(session->sock, session->lsession);
+    } else if((rc < 0  && rc  != LIBSSH2_ERROR_EAGAIN) ||
+              (rc2 < 0 && rc2 != LIBSSH2_ERROR_EAGAIN)) {
+      returnLocalErrorC(READ);
     } else {
       if(rc > 0) {
         out_position += rc;

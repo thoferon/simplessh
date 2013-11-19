@@ -8,8 +8,8 @@ import           Foreign.Ptr
 
 type CEither    = Ptr ()
 newtype Session = Session (Ptr ())
-newtype CResult = CResult (Ptr ())
-newtype CCount  = CCount  (Ptr ())
+type CResult    = Ptr ()
+type CCount     = Ptr ()
 
 foreign import ccall "simplessh_is_left"
   isLeftC :: CEither
