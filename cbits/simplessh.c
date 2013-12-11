@@ -335,7 +335,7 @@ struct simplessh_either *simplessh_send_file(
     current = buf;
     // Ready to write n bytes to the channel
     while(n > 0) {
-      rc = libssh2_channel_write(channel, current, n);
+      while((rc = libssh2_channel_write(channel, current, n)) == LIBSSH2_ERROR_EAGAIN);
       if(rc < 0) returnLocalErrorS(WRITE);
       n -= rc;
       current += rc;
