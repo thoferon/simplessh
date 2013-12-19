@@ -343,10 +343,9 @@ struct simplessh_either *simplessh_send_file(
     }
   }
 
-  libssh2_channel_send_eof(channel);
-  libssh2_channel_wait_eof(channel);
-  libssh2_channel_wait_closed(channel);
-  libssh2_channel_free(channel);
+  while(libssh2_channel_send_eof(channel) == LIBSSH2_ERROR_EAGAIN);
+  while(libssh2_channel_close(channel) == LIBSSH2_ERROR_EAGAIN);
+  while(libssh2_channel_free(channel) == LIBSSH2_ERROR_EAGAIN);
   fclose(f);
   return either;
 }
