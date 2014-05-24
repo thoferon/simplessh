@@ -5,6 +5,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <errno.h>
+#include <poll.h>
 
 #include <libssh2.h>
 #include <simplessh.h>
@@ -54,7 +56,7 @@ inline int get_socket(const char *hostname, uint16_t port) {
 
   struct addrinfo *res = NULL;
   char service[6]; // enough to contain a port number
-  sprintf(service, "%i", port);
+  snprintf(service, 6, "%i", port);
   int rc = getaddrinfo(hostname, service, &hints, &res);
   if(rc != 0) {
     if(res) freeaddrinfo(res);
@@ -64,10 +66,26 @@ inline int get_socket(const char *hostname, uint16_t port) {
   struct addrinfo *current;
   int sock;
   for(current = res; current != NULL; current = current->ai_next) {
-    sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    do {
+      sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    } while(sock == -1 && errno == EINTR);
     if(sock == -1) continue;
 
-    if(connect(sock, res->ai_addr, res->ai_addrlen) != -1) {
+    rc = connect(sock, res->ai_addr, res->ai_addrlen);
+
+    if(rc == -1 && errno == EINTR) {
+      do {
+        struct pollfd pollfd;
+        pollfd.fd     = sock;
+        pollfd.events = POLLIN;
+
+        rc = poll(&pollfd, 1, INFTIM);
+      } while(rc == -1 && errno == EINTR);
+
+      if(rc & POLLIN != POLLIN) rc = 0;
+    }
+
+    if(rc != -1) {
       freeaddrinfo(res);
       return sock;
     }
