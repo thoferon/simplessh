@@ -1,20 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Network.SSH.Client.SimpleSSH
-  ( SimpleSSHError(..)
+  ( -- * Data types
+    SimpleSSHError(..)
   , SimpleSSH
   , Session
   , Result(..)
   , ResultExit(..)
+  -- * Main functions
   , runSimpleSSH
+  , withSessionPassword
+  , withSessionKey
+  , execCommand
+  , sendFile
+  -- * Lower-level functions
   , openSession
   , authenticateWithPassword
   , authenticateWithKey
-  , execCommand
-  , sendFile
   , closeSession
-  , withSessionPassword
-  , withSessionKey
   ) where
 
 import           Control.Applicative
