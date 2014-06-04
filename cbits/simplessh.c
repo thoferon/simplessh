@@ -82,7 +82,7 @@ inline int get_socket(const char *hostname, uint16_t port) {
         rc = poll(&pollfd, 1, INFTIM);
       } while(rc == -1 && errno == EINTR);
 
-      if(rc & POLLIN != POLLIN) rc = 0;
+      if((rc & POLLIN) != POLLIN) rc = 0;
     }
 
     if(rc != -1) {
