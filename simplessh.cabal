@@ -1,8 +1,8 @@
 name:                simplessh
-version:             0.2.0.3
+version:             0.2.0.4
 synopsis:            Simple wrapper around libssh2
 description:         It supports authentication by password or keys. Everything is in the SimpleSSH monad which is ErrorT SimpleSSHError IO, allowing to manage errors in a "haskeller" way.
-license:             MIT
+license:             BSD3
 license-file:        LICENSE
 author:              Thomas Feron
 maintainer:          tho.feron@gmail.com
@@ -35,4 +35,4 @@ library
 source-repository head
   type:              darcs
   location:          http://hub.darcs.net/thoferon/simplessh
-  tag:               0.2.0.3
+  tag:               0.2.0.4
