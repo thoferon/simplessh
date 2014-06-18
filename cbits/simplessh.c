@@ -79,7 +79,7 @@ inline int get_socket(const char *hostname, uint16_t port) {
         pollfd.fd     = sock;
         pollfd.events = POLLIN;
 
-        rc = poll(&pollfd, 1, INFTIM);
+        rc = poll(&pollfd, 1, -1);
       } while(rc == -1 && errno == EINTR);
 
       if((rc & POLLIN) != POLLIN) rc = 0;
