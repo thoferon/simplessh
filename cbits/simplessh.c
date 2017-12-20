@@ -108,6 +108,8 @@ struct simplessh_either *simplessh_open_session(
   int hostkey_type, rc;
   size_t hostkey_len;
 
+  libssh2_init(0);
+
   #define returnLocalErrorSP(err) { \
     simplessh_close_session(session); \
     returnError(either, (err)); \

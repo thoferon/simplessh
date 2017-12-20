@@ -7,7 +7,7 @@ module Network.SSH.Client.SimpleSSH.Types
   , readError
   ) where
 
-import           Control.Monad.Error
+import           Control.Monad.Except
 
 import qualified Data.ByteString.Char8 as BS
 
@@ -27,10 +27,10 @@ data Result = Result
   , resultExit :: ResultExit    -- ^ The process' exit code or signal
   } deriving (Show, Eq)
 
-type SimpleSSH a = ErrorT SimpleSSHError IO a
+type SimpleSSH a = ExceptT SimpleSSHError IO a
 
 runSimpleSSH :: SimpleSSH a -> IO (Either SimpleSSHError a)
-runSimpleSSH = runErrorT
+runSimpleSSH = runExceptT
 
 data SimpleSSHError
   = Connect
@@ -47,9 +47,6 @@ data SimpleSSHError
   | Write
   | Unknown
   deriving (Show, Eq)
-
-instance Error SimpleSSHError where
-  strMsg _ = Unknown
 
 readError :: CInt -> SimpleSSHError
 readError errNum = case errNum of

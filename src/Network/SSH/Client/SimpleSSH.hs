@@ -21,7 +21,8 @@ module Network.SSH.Client.SimpleSSH
   ) where
 
 import           Control.Applicative
-import           Control.Monad.Error
+import           Control.Exception
+import           Control.Monad.Except
 
 import qualified Data.ByteString.Char8 as BS
 
@@ -72,7 +73,8 @@ readResultExit resultC = do
 readCount :: CCount -> IO Integer
 readCount countC = toInteger <$> getCountC countC
 
--- | Helper which lifts IO actions into 'SimpleSSH'. This is used all over the place.
+-- | Helper which lifts IO actions into 'SimpleSSH'. This is used all over the
+-- place.
 liftIOEither :: IO (Either SimpleSSHError a) -> SimpleSSH a
 liftIOEither ioAction = do
   eRes <- liftIO ioAction
@@ -84,8 +86,10 @@ liftIOEither ioAction = do
 --
 -- Functions in the C part return pointers to a structure mimicking 'Either'.
 liftEitherCFree :: (CEither -> IO ()) -- ^ A custom function to free the CEither
-                -> (Ptr () -> IO a)   -- ^ A function to transform the pointer contained in the C structure
-                -> IO CEither         -- ^ An action returning the structure, typically a call to C
+                -> (Ptr () -> IO a)   -- ^ A function to transform the pointer
+                                      -- contained in the C structure
+                -> IO CEither         -- ^ An action returning the structure,
+                                      -- typically a call to C
                 -> IO (Either SimpleSSHError a)
 liftEitherCFree customFree builder action = do
   eitherC   <- action
@@ -110,7 +114,8 @@ openSession hostname port knownhostsPath = liftIOEither $ do
   knownhostsPathC <- newCString knownhostsPath
   let portC = fromInteger port
 
-  res <- liftEitherC (return . Session) $ openSessionC hostnameC portC knownhostsPathC
+  res <- liftEitherC (return . Session) $
+    openSessionC hostnameC portC knownhostsPathC
 
   free hostnameC
   free knownhostsPathC
@@ -126,7 +131,8 @@ authenticateWithPassword session username password = liftIOEither $ do
   usernameC <- newCString username
   passwordC <- newCString password
 
-  res <- liftEitherC (return . Session) $ authenticatePasswordC session usernameC passwordC
+  res <- liftEitherC (return . Session) $
+    authenticatePasswordC session usernameC passwordC
 
   free usernameC
   free passwordC
@@ -138,22 +144,27 @@ authenticateWithPassword session username password = liftIOEither $ do
 -- Leave the passphrase empty if not needed.
 authenticateWithKey :: Session  -- ^ Session to use
                     -> String   -- ^ Username
-                    -> FilePath -- ^ Path to the public key (e.g. ~/.ssh/id_rsa.pub)
-                    -> FilePath -- ^ Path to the private key (e.g. ~/.ssh/id_rsa)
+                    -> FilePath -- ^ Path to the public key
+                                -- (e.g. ~/.ssh/id_rsa.pub)
+                    -> FilePath -- ^ Path to the private key
+                                -- (e.g. ~/.ssh/id_rsa)
                     -> String   -- ^ Passphrase
                     -> SimpleSSH Session
-authenticateWithKey session username publicKeyPath privateKeyPath passphrase = liftIOEither $ do
-  (usernameC, publicKeyPathC, privateKeyPathC, passphraseC) <-
-    (,,,) <$> newCString username
-          <*> newCString publicKeyPath
-          <*> newCString privateKeyPath
-          <*> newCString passphrase
+authenticateWithKey session username publicKeyPath privateKeyPath passphrase =
+  liftIOEither $ do
+    (usernameC, publicKeyPathC, privateKeyPathC, passphraseC) <-
+      (,,,) <$> newCString username
+            <*> newCString publicKeyPath
+            <*> newCString privateKeyPath
+            <*> newCString passphrase
 
-  res <- liftEitherC (return . Session) $ authenticateKeyC session usernameC publicKeyPathC privateKeyPathC passphraseC
+    res <- liftEitherC (return . Session) $
+      authenticateKeyC session usernameC publicKeyPathC privateKeyPathC
+                       passphraseC
 
-  mapM_ free [usernameC, publicKeyPathC, privateKeyPathC, passphraseC]
+    mapM_ free [usernameC, publicKeyPathC, privateKeyPathC, passphraseC]
 
-  return res
+    return res
 
 -- | Send a command to the server.
 --
@@ -164,7 +175,8 @@ execCommand :: Session -- ^ Session to use
 execCommand session command = do
   liftIOEither $ do
     commandC <- newCString command
-    res      <- liftEitherCFree freeEitherResultC readResult $ execCommandC session commandC
+    res <- liftEitherCFree freeEitherResultC readResult $
+      execCommandC session commandC
     free commandC
     return res
 
@@ -182,7 +194,8 @@ sendFile session mode source target = do
     targetC <- newCString target
     let modeC = fromInteger mode
 
-    res <- liftEitherCFree freeEitherCountC readCount $ sendFileC session modeC sourceC targetC
+    res <- liftEitherCFree freeEitherCountC readCount $
+      sendFileC session modeC sourceC targetC
 
     free sourceC
     free targetC
@@ -193,26 +206,31 @@ sendFile session mode source target = do
 closeSession :: Session -> SimpleSSH ()
 closeSession = lift . closeSessionC
 
--- | Open a connection, authenticate, execute some action and close the connection.
+-- | Open a connection, authenticate, execute some action and close the
+-- connection.
 --
--- It is the safe way of using SimpleSSH. This function is to be used to authenticate with a pair username / password, otherwise see 'withSessionKey'.
+-- It is the safe way of using SimpleSSH. This function is to be used to
+-- authenticate with a pair username / password, otherwise see 'withSessionKey'.
 withSessionPassword :: String                   -- ^ Hostname
                     -> Integer                  -- ^ Port
                     -> String                   -- ^ Path to known_hosts
                     -> String                   -- ^ Username
                     -> String                   -- ^ Password
-                    -> (Session -> SimpleSSH a) -- ^ Monadic action on the session
+                    -> (Session -> SimpleSSH a) -- ^ Monadic action on the
+                                                -- session
                     -> SimpleSSH a
 withSessionPassword hostname port knownhostsPath username password action = do
   session              <- openSession hostname port knownhostsPath
   authenticatedSession <- authenticateWithPassword session username password
-  res                  <- action authenticatedSession
-  closeSession authenticatedSession
-  return res
+  ExceptT $
+    runExceptT (action authenticatedSession)
+      `finally` closeSessionC authenticatedSession
 
--- | Open a connection, authenticate, execute some action and close the connection.
+-- | Open a connection, authenticate, execute some action and close the
+-- connection.
 --
--- It is the safe way of using SimpleSSH. This function is to be used to authenticate with a key, otherwise see 'withSessionPassword'.
+-- It is the safe way of using SimpleSSH. This function is to be used to
+-- authenticate with a key, otherwise see 'withSessionPassword'.
 withSessionKey :: String                   -- ^ Hostname
                -> Integer                  -- ^ port
                -> String                   -- ^ Path to known_hosts
@@ -222,9 +240,11 @@ withSessionKey :: String                   -- ^ Hostname
                -> String                   -- ^ Passphrase
                -> (Session -> SimpleSSH a) -- ^ Monadic action on the session
                -> SimpleSSH a
-withSessionKey hostname port knownhostsPath username publicKeyPath privateKeyPath passphrase action = do
+withSessionKey hostname port knownhostsPath username publicKeyPath
+               privateKeyPath passphrase action = do
   session              <- openSession hostname port knownhostsPath
-  authenticatedSession <- authenticateWithKey session username publicKeyPath privateKeyPath passphrase
-  res                  <- action authenticatedSession
-  closeSession authenticatedSession
-  return res
+  authenticatedSession <- authenticateWithKey session username publicKeyPath
+                                              privateKeyPath passphrase
+  ExceptT $
+    runExceptT (action authenticatedSession)
+      `finally` closeSessionC authenticatedSession
