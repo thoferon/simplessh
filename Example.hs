@@ -8,15 +8,20 @@ import Network.SSH.Client.SimpleSSH
 
 action :: FilePath -> String -> String -> SimpleSSH ()
 action home username host = do
-  withSessionKey host 22 (home ++ "/.ssh/known_hosts") username
-                 (home ++ "/.ssh/id_rsa.pub") (home ++ "/.ssh/id_rsa")
-                 "" $ \session -> do
+  withSessionKey
+    host
+    22
+    (home ++ "/.ssh/known_hosts")
+    username
+    (home ++ "/.ssh/id_ed25519.pub")
+    (home ++ "/.ssh/id_ed25519")
+    "" $ \session -> do
     res <- execCommand session "uname -a"
     liftIO $ print res
 
 main :: IO ()
 main = do
-  username : host : _ <- getArgs
+  username:host:_ <- getArgs
   Just home <- lookup "HOME" <$> getEnvironment
   eRes <- runSimpleSSH $ action home username host
   case eRes of

@@ -46,7 +46,7 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
   return rc;
 }
 
-inline int get_socket(const char *hostname, uint16_t port) {
+int get_socket(const char *hostname, uint16_t port) {
   struct addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
   hints.ai_family   = AF_UNSPEC;
